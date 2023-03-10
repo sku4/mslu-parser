@@ -17,7 +17,7 @@ type Service struct {
 	Parser
 }
 
-func NewService(ctx context.Context, repos *repository.Repository) *Service {
+func NewService(repos *repository.Repository) *Service {
 	return &Service{
 		Parser: parser.NewService(repos),
 	}

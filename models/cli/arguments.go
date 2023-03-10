@@ -3,9 +3,11 @@ package cli
 import "context"
 
 type Arguments struct {
-	Update  bool
-	Count   int
-	Profile string
+	Profile  string
+	Login    string
+	Password string
+	Count    int
+	Update   bool
 }
 
 type argsKey struct{}
