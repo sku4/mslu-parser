@@ -77,9 +77,7 @@ func (s *Service) Shutdown() error {
 	}
 
 	if s.isParseRun {
-		select {
-		case <-s.completeChan:
-		}
+		<-s.completeChan
 	}
 
 	return nil
