@@ -6,6 +6,8 @@ type Arguments struct {
 	Profile  string
 	Login    string
 	Password string
+	ZeitMode string
+	ZeitType string
 	Count    int
 	Update   bool
 }

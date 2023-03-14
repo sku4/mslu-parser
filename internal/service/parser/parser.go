@@ -9,6 +9,7 @@ import (
 	"github.com/sku4/mslu-parser/models"
 	"github.com/sku4/mslu-parser/models/cli"
 	"github.com/sku4/mslu-parser/pkg/logger"
+	"hash/crc32"
 	"sync"
 )
 
@@ -28,9 +29,10 @@ type Service struct {
 	complexChan          chan models.Complex
 	completeChan         chan struct{}
 	isParseRun           bool
-	urls                 map[string]*models.ExcelRow
+	urls                 map[uint32]*models.ExcelRow
 	tooManyRequestsLimit int
 	rwMutex              *sync.RWMutex
+	crcTable             *crc32.Table
 }
 
 func NewService(repos *repository.Repository) *Service {
@@ -40,6 +42,7 @@ func NewService(repos *repository.Repository) *Service {
 		urlsChan:     make(chan models.ExcelUrl, 10000),
 		complexChan:  make(chan models.Complex, 10000),
 		rwMutex:      &sync.RWMutex{},
+		crcTable:     crc32.MakeTable(crc32.IEEE),
 	}
 }
 
@@ -78,6 +81,11 @@ func (s *Service) Shutdown() error {
 
 	if s.isParseRun {
 		<-s.completeChan
+	}
+
+	err := s.repos.Excel.Close()
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -147,7 +155,8 @@ func (s *Service) searchArticles(ctx context.Context, wg *sync.WaitGroup) error 
 
 				return nil
 			}
-			excelRow, hasUrl := s.urls[excelUrl.Url]
+			url := crc32.Checksum([]byte(excelUrl.Url), s.crcTable)
+			excelRow, hasUrl := s.urls[url]
 			excelUrl.ExcelRow = excelRow
 			if !hasUrl || args.Update {
 				s.urlsChan <- excelUrl

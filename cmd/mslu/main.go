@@ -25,6 +25,8 @@ func main() {
 	flag.StringVar(&args.Login, "login", "", "Auth login")
 	flag.StringVar(&args.Password, "pass", "", "Auth password")
 	flag.BoolVar(&args.Update, "update", false, "Update downloaded articles")
+	flag.StringVar(&args.ZeitMode, "zeit_mode", "1y", "Zeit mode: 1y")
+	flag.StringVar(&args.ZeitType, "zeit_type", "article", "Zeit type: article")
 	flag.Parse()
 	ctx = cli.SetArgs(ctx, args)
 

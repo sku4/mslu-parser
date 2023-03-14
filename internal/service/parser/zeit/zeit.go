@@ -27,7 +27,7 @@ func New(repos *repository.Repository) *Zeit {
 }
 
 const (
-	searchUrl        = "https://www.zeit.de/suche/index?q=&mode=1y&type=article&p=%d"
+	searchUrl        = "https://www.zeit.de/suche/index?q=&mode=%s&type=%s&p=%d"
 	authUrl          = "https://meine.zeit.de/anmelden"
 	cookieAuthPrefix = "zeit_sso_"
 )
@@ -134,7 +134,8 @@ func (z *Zeit) Shutdown() error {
 }
 
 func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelUrl, error) {
-	url := fmt.Sprintf(searchUrl, pageNum)
+	args := cli.GetArgs(ctx)
+	url := fmt.Sprintf(searchUrl, args.ZeitMode, args.ZeitType, pageNum)
 	resp, err := z.request(ctx, url)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("status code %d", resp.StatusCode))
