@@ -59,13 +59,19 @@ func (e *Excel) GetUsedUrls(context.Context) (map[uint32]*models.ExcelRow, error
 }
 
 func (e *Excel) SetComplex(ctx context.Context, modelComplex models.Complex) error {
-	e.rowsCount++
-	err := e.parserFile.SetCellValue(parserXlsSheet1, "A"+strconv.Itoa(e.rowsCount), modelComplex.Url)
+	n := 0
+	if modelComplex.ExcelRow != nil && modelComplex.ExcelRow.Row > 0 {
+		n = modelComplex.ExcelRow.Row
+	} else {
+		e.rowsCount++
+		n = e.rowsCount
+	}
+	err := e.parserFile.SetCellValue(parserXlsSheet1, "A"+strconv.Itoa(n), modelComplex.Url)
 	if err != nil {
 		return err
 	}
-	_ = e.parserFile.SetCellValue(parserXlsSheet1, "B"+strconv.Itoa(e.rowsCount), modelComplex.Title)
-	_ = e.parserFile.SetCellValue(parserXlsSheet1, "C"+strconv.Itoa(e.rowsCount), modelComplex.Second)
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "B"+strconv.Itoa(n), modelComplex.Title)
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "C"+strconv.Itoa(n), modelComplex.Second)
 
 	if checkEverySave() {
 		if err = e.parserFile.SaveAs(parserXlsFile); err != nil {
