@@ -30,7 +30,7 @@ func New() *Excel {
 	} else {
 		f, _ = excelize.OpenFile(parserXlsFile)
 	}
-	rows, err := f.GetRows(parserXlsSheet1)
+	rows, _ := f.GetRows(parserXlsSheet1)
 	crcTable := crc32.MakeTable(crc32.IEEE)
 
 	return &Excel{
