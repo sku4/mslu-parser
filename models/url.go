@@ -2,7 +2,7 @@ package models
 
 type ExcelUrl struct {
 	Url string
-	ExcelRow
+	*ExcelRow
 }
 
 type ExcelRow struct {

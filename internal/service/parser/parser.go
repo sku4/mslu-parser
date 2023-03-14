@@ -15,26 +15,31 @@ import (
 //go:generate mockgen -source=parser.go -destination=mocks/parser.go
 
 type iProfile interface {
-	Run(context.Context) error
+	Auth(context.Context) error
 	Shutdown() error
-	SearchArticles(ctx context.Context, pageNum int) (*[]models.ExcelUrl, error)
+	SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelUrl, error)
 	DownloadArticle(ctx context.Context, excelUrl *models.ExcelUrl) (*models.Complex, error)
 }
 
 type Service struct {
-	repos        *repository.Repository
-	profile      iProfile
-	urlsChan     chan models.ExcelUrl
-	complexChan  chan models.Complex
-	completeChan chan struct{}
+	repos                *repository.Repository
+	profile              iProfile
+	urlsChan             chan models.ExcelUrl
+	complexChan          chan models.Complex
+	completeChan         chan struct{}
+	isParseRun           bool
+	urls                 map[string]*models.ExcelRow
+	tooManyRequestsLimit int
+	rwMutex              *sync.RWMutex
 }
 
 func NewService(repos *repository.Repository) *Service {
 	return &Service{
 		repos:        repos,
-		completeChan: make(chan struct{}),
+		completeChan: make(chan struct{}, 1),
 		urlsChan:     make(chan models.ExcelUrl, 10000),
 		complexChan:  make(chan models.Complex, 10000),
+		rwMutex:      &sync.RWMutex{},
 	}
 }
 
@@ -47,10 +52,16 @@ func (s *Service) Run(ctx context.Context) (err error) {
 		return errors.New(fmt.Sprintf("Profile '%s' not found", args.Profile))
 	}
 
-	if err = s.profile.Run(ctx); err != nil {
+	s.urls, err = s.repos.Excel.GetUsedUrls(ctx)
+	if err != nil {
 		return err
 	}
 
+	if err = s.profile.Auth(ctx); err != nil {
+		return err
+	}
+
+	s.tooManyRequestsLimit = 5
 	if err = s.parse(ctx); err != nil {
 		return err
 	}
@@ -65,14 +76,17 @@ func (s *Service) Shutdown() error {
 		}
 	}
 
-	select {
-	case <-s.completeChan:
+	if s.isParseRun {
+		select {
+		case <-s.completeChan:
+		}
 	}
 
 	return nil
 }
 
 func (s *Service) parse(ctx context.Context) (err error) {
+	s.isParseRun = true
 	wg := &sync.WaitGroup{}
 
 	// search new articles
@@ -99,7 +113,7 @@ func (s *Service) parse(ctx context.Context) (err error) {
 	wg.Wait()
 	close(s.complexChan)
 	wgs.Wait()
-	close(s.completeChan)
+	s.completeChan <- struct{}{}
 
 	return nil
 }
@@ -110,8 +124,10 @@ func (s *Service) searchArticles(ctx context.Context, wg *sync.WaitGroup) error 
 		return models.ProfileNotInitError
 	}
 	log := logger.Get()
+	args := cli.GetArgs(ctx)
 
 	pageNum := 1
+	countLimit := args.Count
 	for {
 		select {
 		case <-ctx.Done():
@@ -123,12 +139,22 @@ func (s *Service) searchArticles(ctx context.Context, wg *sync.WaitGroup) error 
 		excelUrls, err := s.profile.SearchArticles(ctx, pageNum)
 		if err != nil {
 			if !errors.Is(err, models.ArticlesNotFoundError) {
-				log.Errorf("Search articles pageNum %d error: %s", pageNum, err.Error())
+				log.Warnf("Search articles pageNum %d error: %s", pageNum, err.Error())
 			}
 			break
 		}
-		for _, excelUrl := range *excelUrls {
-			s.urlsChan <- excelUrl
+		for _, excelUrl := range excelUrls {
+			if countLimit == 0 {
+				close(s.urlsChan)
+
+				return nil
+			}
+			excelRow, hasUrl := s.urls[excelUrl.Url]
+			excelUrl.ExcelRow = excelRow
+			if !hasUrl || args.Update {
+				s.urlsChan <- excelUrl
+				countLimit--
+			}
 		}
 		pageNum++
 	}
@@ -150,14 +176,24 @@ func (s *Service) downloadArticles(ctx context.Context, wg *sync.WaitGroup) erro
 			return nil
 		default:
 		}
+
+		s.rwMutex.RLock()
+		if s.tooManyRequestsLimit == 0 {
+			return nil
+		}
+		s.rwMutex.RUnlock()
 		modelComplex, err := s.profile.DownloadArticle(ctx, &excelUrl)
 		if err != nil {
 			log.Errorf("Download article (%s) error: %s", excelUrl.Url, err.Error())
-			break
 		}
-		s.complexChan <- *modelComplex
-		// todo remove
-		//time.Sleep(time.Second * 5)
+		if modelComplex != nil && modelComplex.TooManyRequests {
+			s.rwMutex.Lock()
+			s.tooManyRequestsLimit--
+			s.rwMutex.Unlock()
+			log.Errorf("Download article too many requests (%s)", excelUrl.Url)
+		} else if err == nil {
+			s.complexChan <- *modelComplex
+		}
 	}
 
 	return nil
@@ -165,9 +201,14 @@ func (s *Service) downloadArticles(ctx context.Context, wg *sync.WaitGroup) erro
 
 func (s *Service) saveArticles(ctx context.Context, wgs *sync.WaitGroup) error {
 	defer wgs.Done()
-	for cx := range s.complexChan {
-		_ = cx
+	log := logger.Get()
 
+	for cx := range s.complexChan {
+		err := s.repos.Excel.SetComplex(ctx, cx)
+		if err != nil {
+			log.Errorf("Save articles error: %s", err.Error())
+			return errors.Wrap(err, "Save articles")
+		}
 	}
 
 	return nil

@@ -9,7 +9,8 @@ import (
 //go:generate mockgen -source=repository.go -destination=mocks/repository.go
 
 type Excel interface {
-	GetUsedUrls(context.Context) (map[string]models.ExcelRow, error)
+	GetUsedUrls(context.Context) (map[string]*models.ExcelRow, error)
+	SetComplex(context.Context, models.Complex) error
 }
 
 type Repository struct {

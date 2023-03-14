@@ -1,15 +1,23 @@
 package zeit
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/pkg/errors"
 	"github.com/sku4/mslu-parser/internal/repository"
 	"github.com/sku4/mslu-parser/models"
+	"github.com/sku4/mslu-parser/models/cli"
 	"github.com/sku4/mslu-parser/pkg/logger"
+	"mime/multipart"
+	"net/http"
+	"strings"
 )
 
 type Zeit struct {
-	repos *repository.Repository
-	urls  map[string]models.ExcelRow
+	repos      *repository.Repository
+	authCookie []*http.Cookie
 }
 
 func New(repos *repository.Repository) *Zeit {
@@ -19,23 +27,102 @@ func New(repos *repository.Repository) *Zeit {
 }
 
 const (
-	url = "https://www.zeit.de/suche/index?q=&mode=1y&type=article"
+	searchUrl        = "https://www.zeit.de/suche/index?q=&mode=1y&type=article&p=%d"
+	authUrl          = "https://meine.zeit.de/anmelden"
+	cookieAuthPrefix = "zeit_sso_"
 )
 
-func (z *Zeit) Run(ctx context.Context) (err error) {
-	if err = z.Auth(ctx); err != nil {
-		return err
-	}
-
-	z.urls, err = z.repos.Excel.GetUsedUrls(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (z *Zeit) Auth(ctx context.Context) error {
+	z.authCookie = make([]*http.Cookie, 0, 4)
+	args := cli.GetArgs(ctx)
+	if args.Login == "" || args.Password == "" {
+		return errors.New("login or password not set")
+	}
+
+	reqCsrf, err := http.NewRequest(http.MethodGet, authUrl, bytes.NewBuffer([]byte{}))
+	if err != nil {
+		return errors.New(fmt.Sprintf("error create request: %s", err.Error()))
+	}
+	var client http.Client
+	respCsrf, err := client.Do(reqCsrf)
+	if err != nil {
+		return errors.New(fmt.Sprintf("error request csrf page: %s", err.Error()))
+	}
+	defer func() {
+		_ = respCsrf.Body.Close()
+	}()
+
+	csrfCookies := respCsrf.Cookies()
+	csrfToken := ""
+	for _, cookie := range csrfCookies {
+		if cookie.Name == "csrf_token" {
+			csrfToken = cookie.Value
+			break
+		}
+	}
+
+	if csrfToken == "" {
+		return errors.New("csrf token not found")
+	}
+
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	_ = w.WriteField("entry_service", "sonstige")
+	_ = w.WriteField("product_id", "sonstige")
+	_ = w.WriteField("return_url", "")
+	_ = w.WriteField("email", args.Login)
+	_ = w.WriteField("pass", args.Password)
+	_ = w.WriteField("permanent", "on")
+	_ = w.WriteField("csrf_token", csrfToken)
+	_ = w.Close()
+
+	reqAuth, err := http.NewRequest(http.MethodPost, authUrl, &b)
+	if err != nil {
+		return errors.New(fmt.Sprintf("error create request: %s", err.Error()))
+	}
+	for _, cookie := range csrfCookies {
+		reqAuth.AddCookie(cookie)
+	}
+	reqAuth.Header.Set("Content-Type", w.FormDataContentType())
+	reqAuth.Header.Set("Host", "meine.zeit.de")
+	reqAuth.Header.Set("Referer", "https://meine.zeit.de/anmelden")
+	respAuth, err := client.Do(reqAuth)
+	if err != nil {
+		return errors.New(fmt.Sprintf("error request auth page: %s", err.Error()))
+	}
+	defer func() {
+		_ = respAuth.Body.Close()
+	}()
+
+	resp := respAuth
+	for resp != nil {
+		z.authCookie = append(z.authCookie, resp.Cookies()...)
+		resp = resp.Request.Response
+	}
+
+	hasCookieAuthPrefix := false
+	for _, c := range z.authCookie {
+		if strings.Contains(c.Name, cookieAuthPrefix) {
+			hasCookieAuthPrefix = true
+			break
+		}
+	}
+	if !hasCookieAuthPrefix {
+		return errors.New("error cookies not found")
+	}
+
+	firstCookie := z.authCookie[0]
+	zonConsentCookie := &http.Cookie{
+		Name:     "zonconsent",
+		Value:    "2023-03-14T16:29:12.611Z",
+		Domain:   firstCookie.Domain,
+		Expires:  firstCookie.Expires,
+		Path:     firstCookie.Path,
+		Secure:   firstCookie.Secure,
+		HttpOnly: firstCookie.HttpOnly,
+	}
+	z.authCookie = append(z.authCookie, zonConsentCookie)
+
 	return nil
 }
 
@@ -46,20 +133,94 @@ func (z *Zeit) Shutdown() error {
 	return nil
 }
 
-func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) (*[]models.ExcelUrl, error) {
-	if pageNum == 1 {
-		return &[]models.ExcelUrl{
-			{}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-			{}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-			{}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-		}, nil
+func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelUrl, error) {
+	url := fmt.Sprintf(searchUrl, pageNum)
+	resp, err := z.request(ctx, url)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("status code %d", resp.StatusCode))
 	}
 
-	return nil, models.ArticlesNotFoundError
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "create document reader")
+	}
+
+	excelUrls := make([]models.ExcelUrl, 0)
+	doc.Find("a.zon-teaser-standard__faux-link").Each(func(i int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+		if exists && href != "" {
+			excelUrls = append(excelUrls, models.ExcelUrl{
+				Url: href,
+			})
+		}
+	})
+
+	if len(excelUrls) == 0 {
+		return nil, models.ArticlesNotFoundError
+	}
+
+	return excelUrls, nil
 }
 
 func (z *Zeit) DownloadArticle(ctx context.Context, excelUrl *models.ExcelUrl) (*models.Complex, error) {
-	return &models.Complex{
+	resp, err := z.request(ctx, excelUrl.Url)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("status code %d", resp.StatusCode))
+	}
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	modelComplex := &models.Complex{
 		ExcelUrl: *excelUrl,
-	}, nil
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		modelComplex.TooManyRequests = true
+
+		return modelComplex, nil
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "create document reader")
+	}
+
+	title := doc.Find(".header-article h1 .headline__title").Text()
+	second := doc.Find(".header-article .headline__supertitle").Text()
+	if title == "" {
+		title = doc.Find(".article-header h1 .article-heading__title").Text()
+		second = doc.Find(".article-header .article-heading__kicker").Text()
+	}
+
+	if title == "" {
+		return nil, models.ArticleNotFoundError
+	}
+
+	modelComplex.Title = title
+	modelComplex.Second = second
+
+	return modelComplex, nil
+}
+
+func (z *Zeit) request(ctx context.Context, url string) (*http.Response, error) {
+	var client http.Client
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("error create request: %s", err.Error()))
+	}
+	for _, c := range z.authCookie {
+		req.AddCookie(c)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("error request body page: %s", err.Error()))
+	}
+
+	return resp, nil
 }
