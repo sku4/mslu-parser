@@ -196,7 +196,7 @@ func (z *Zeit) DownloadArticle(ctx context.Context, excelUrl *models.ExcelUrl) (
 	title := doc.Find(".article-header h1 .article-heading__title").Text()
 	overTitle := doc.Find(".article-header .article-heading__kicker").Text()
 	lead := doc.Find(".article-header .summary").Text()
-	doc.Find("h2.article__subheading article__item").Each(func(i int, s *goquery.Selection) {
+	doc.Find("h2.article__subheading").Each(func(i int, s *goquery.Selection) {
 		if strings.TrimSpace(s.Text()) != "" {
 			subtitles = append(subtitles, strings.TrimSpace(s.Text()))
 		}
