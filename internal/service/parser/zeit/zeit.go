@@ -152,8 +152,9 @@ func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelU
 
 	excelUrls := make([]models.ExcelUrl, 0)
 	doc.Find("a.zon-teaser-standard__faux-link").Each(func(i int, s *goquery.Selection) {
+		hasZPlus := s.Parent().Find(".zon-teaser-standard__heading svg.zplus-logo").Length() > 0
 		href, exists := s.Attr("href")
-		if exists && href != "" {
+		if exists && href != "" && !hasZPlus {
 			excelUrls = append(excelUrls, models.ExcelUrl{
 				Url: href,
 			})
@@ -191,19 +192,24 @@ func (z *Zeit) DownloadArticle(ctx context.Context, excelUrl *models.ExcelUrl) (
 		return nil, errors.Wrap(err, "create document reader")
 	}
 
-	title := doc.Find(".header-article h1 .headline__title").Text()
-	second := doc.Find(".header-article .headline__supertitle").Text()
-	if title == "" {
-		title = doc.Find(".article-header h1 .article-heading__title").Text()
-		second = doc.Find(".article-header .article-heading__kicker").Text()
-	}
+	subtitles := make([]string, 0)
+	title := doc.Find(".article-header h1 .article-heading__title").Text()
+	overTitle := doc.Find(".article-header .article-heading__kicker").Text()
+	lead := doc.Find(".article-header .summary").Text()
+	doc.Find("h2.article__subheading article__item").Each(func(i int, s *goquery.Selection) {
+		if strings.TrimSpace(s.Text()) != "" {
+			subtitles = append(subtitles, strings.TrimSpace(s.Text()))
+		}
+	})
 
 	if title == "" {
 		return nil, models.ArticleNotFoundError
 	}
 
-	modelComplex.Title = title
-	modelComplex.Second = second
+	modelComplex.Title = strings.TrimSpace(title)
+	modelComplex.OverTitle = strings.TrimSpace(overTitle)
+	modelComplex.Lead = strings.TrimSpace(lead)
+	modelComplex.Subtitles = subtitles
 
 	return modelComplex, nil
 }

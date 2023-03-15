@@ -25,8 +25,8 @@ func main() {
 	flag.StringVar(&args.Login, "login", "", "Auth login")
 	flag.StringVar(&args.Password, "pass", "", "Auth password")
 	flag.BoolVar(&args.Update, "update", false, "Update downloaded articles")
-	flag.StringVar(&args.ZeitMode, "zeit_mode", "1y", "Zeit mode: 1y")
-	flag.StringVar(&args.ZeitType, "zeit_type", "article", "Zeit type: article")
+	flag.StringVar(&args.ZeitMode, "zeit_mode", "1y", "Zeit mode")
+	flag.StringVar(&args.ZeitType, "zeit_type", "article", "Zeit type")
 	flag.Parse()
 	ctx = cli.SetArgs(ctx, args)
 
@@ -36,6 +36,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 
 	log := logger.Get()
+	log.Infof("App Started with args: '%s', count %d, update %t", args.Profile, args.Count, args.Update)
 
 	go func() {
 		if err := services.Parser.Run(ctx); err != nil {
@@ -43,8 +44,6 @@ func main() {
 		}
 		quit <- nil
 	}()
-
-	log.Infof("App Started with args: '%s', count %d, update %t", args.Profile, args.Count, args.Update)
 
 	// graceful shutdown
 	log.Infof("Got signal %v, attempting graceful shutdown", <-quit)

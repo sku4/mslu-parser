@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -71,7 +72,9 @@ func (e *Excel) SetComplex(ctx context.Context, modelComplex models.Complex) err
 		return err
 	}
 	_ = e.parserFile.SetCellValue(parserXlsSheet1, "B"+strconv.Itoa(n), modelComplex.Title)
-	_ = e.parserFile.SetCellValue(parserXlsSheet1, "C"+strconv.Itoa(n), modelComplex.Second)
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "C"+strconv.Itoa(n), modelComplex.OverTitle)
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "D"+strconv.Itoa(n), modelComplex.Lead)
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "E"+strconv.Itoa(n), strings.Join(modelComplex.Subtitles, "\n"))
 
 	if checkEverySave() {
 		if err = e.parserFile.SaveAs(parserXlsFile); err != nil {
