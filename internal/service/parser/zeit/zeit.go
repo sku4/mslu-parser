@@ -148,6 +148,7 @@ func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelU
 	}
 
 	excelUrls := make([]models.ExcelUrl, 0)
+	articlesFound := false
 	doc.Find("a.zon-teaser-standard__faux-link").Each(func(i int, s *goquery.Selection) {
 		hasZPlus := s.Parent().Find(".zon-teaser-standard__heading svg.zplus-logo").Length() > 0
 		href, exists := s.Attr("href")
@@ -156,9 +157,12 @@ func (z *Zeit) SearchArticles(ctx context.Context, pageNum int) ([]models.ExcelU
 				Url: href,
 			})
 		}
+		if exists || href != "" || hasZPlus {
+			articlesFound = true
+		}
 	})
 
-	if len(excelUrls) == 0 {
+	if len(excelUrls) == 0 && !articlesFound {
 		return nil, models.ArticlesNotFoundError
 	}
 
