@@ -145,6 +145,14 @@ func (s *Service) searchArticles(ctx context.Context, wg *sync.WaitGroup) error 
 			return nil
 		default:
 		}
+
+		s.rwMutex.RLock()
+		if s.tooManyRequestsLimit == 0 {
+
+			return nil
+		}
+		s.rwMutex.RUnlock()
+
 		excelUrls, err := s.profile.SearchArticles(ctx, pageNum)
 		if err != nil {
 			if !errors.Is(err, models.ArticlesNotFoundError) {
@@ -189,9 +197,11 @@ func (s *Service) downloadArticles(ctx context.Context, wg *sync.WaitGroup) erro
 
 		s.rwMutex.RLock()
 		if s.tooManyRequestsLimit == 0 {
+
 			return nil
 		}
 		s.rwMutex.RUnlock()
+
 		modelComplex, err := s.profile.DownloadArticle(ctx, &excelUrl)
 		if err != nil {
 			log.Errorf("Download article (%s) error: %s", excelUrl.Url, err.Error())
