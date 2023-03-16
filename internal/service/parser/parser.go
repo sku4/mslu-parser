@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/sku4/mslu-parser/internal/repository"
+	"github.com/sku4/mslu-parser/internal/service/parser/spiegel"
 	"github.com/sku4/mslu-parser/internal/service/parser/zeit"
 	"github.com/sku4/mslu-parser/models"
 	"github.com/sku4/mslu-parser/models/cli"
@@ -50,7 +51,9 @@ func (s *Service) Run(ctx context.Context) (err error) {
 	args := cli.GetArgs(ctx)
 	switch args.Profile {
 	case "zeit":
-		s.profile = zeit.New(s.repos)
+		s.profile = zeit.New()
+	case "spiegel":
+		s.profile = spiegel.New()
 	default:
 		return errors.New(fmt.Sprintf("Profile '%s' not found", args.Profile))
 	}

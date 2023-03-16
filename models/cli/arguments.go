@@ -3,13 +3,17 @@ package cli
 import "context"
 
 type Arguments struct {
-	Profile  string
-	Login    string
-	Password string
-	ZeitMode string
-	ZeitType string
-	Count    int
-	Update   bool
+	Profile            string
+	Login              string
+	Password           string
+	ZeitMode           string
+	ZeitType           string
+	SpiegelSuchbegriff string
+	SpiegelZeitraum    int
+	SpiegelInhalt      string
+	SpiegelSegments    string
+	Count              int
+	Update             bool
 }
 
 type argsKey struct{}

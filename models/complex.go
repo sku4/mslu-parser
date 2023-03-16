@@ -5,6 +5,7 @@ type Complex struct {
 	OverTitle       string
 	Lead            string
 	Subtitles       []string
+	ImageTitles     []string
 	TooManyRequests bool
 	ExcelUrl
 }

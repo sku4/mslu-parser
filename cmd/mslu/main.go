@@ -21,12 +21,17 @@ func main() {
 
 	args := cli.Arguments{}
 	flag.IntVar(&args.Count, "count", 100, "Count download articles")
-	flag.StringVar(&args.Profile, "profile", "", "Available: zeit")
+	flag.StringVar(&args.Profile, "profile", "", "Available: zeit, spiegel")
 	flag.StringVar(&args.Login, "login", "", "Auth login")
 	flag.StringVar(&args.Password, "pass", "", "Auth password")
 	flag.BoolVar(&args.Update, "update", false, "Update downloaded articles")
 	flag.StringVar(&args.ZeitMode, "zeit_mode", "1y", "Zeit mode")
 	flag.StringVar(&args.ZeitType, "zeit_type", "article", "Zeit type")
+	flag.IntVar(&args.SpiegelZeitraum, "spiegel_zeitraum", 365, "Spiegel zeitraum (in days)")
+	flag.StringVar(&args.SpiegelSuchbegriff, "spiegel_suchbegriff", "politik", "Spiegel suchbegriff")
+	flag.StringVar(&args.SpiegelInhalt, "spiegel_inhalt", "", "Spiegel inhalt (heading,title,intro)")
+	flag.StringVar(&args.SpiegelSegments, "spiegel_segments",
+		"spon,spon_paid,spon_international,mmo,mmo_paid,hbm,hbm_paid", "Spiegel segments")
 	flag.Parse()
 	ctx = cli.SetArgs(ctx, args)
 

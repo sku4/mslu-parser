@@ -75,6 +75,7 @@ func (e *Excel) SetComplex(ctx context.Context, modelComplex models.Complex) err
 	_ = e.parserFile.SetCellValue(parserXlsSheet1, "C"+strconv.Itoa(n), modelComplex.OverTitle)
 	_ = e.parserFile.SetCellValue(parserXlsSheet1, "D"+strconv.Itoa(n), modelComplex.Lead)
 	_ = e.parserFile.SetCellValue(parserXlsSheet1, "E"+strconv.Itoa(n), strings.Join(modelComplex.Subtitles, "\n"))
+	_ = e.parserFile.SetCellValue(parserXlsSheet1, "F"+strconv.Itoa(n), strings.Join(modelComplex.ImageTitles, "\n"))
 
 	if checkEverySave() {
 		if err = e.parserFile.SaveAs(parserXlsFile); err != nil {
